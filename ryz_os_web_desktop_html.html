@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryz OS - Virtual Web Desktop</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        ryz: {
+                            accent: '#6366f1',
+                            accentHover: '#4f46e5',
+                            glass: 'rgba(255, 255, 255, 0.15)',
+                            glassDark: 'rgba(15, 23, 42, 0.65)',
+                            border: 'rgba(255, 255, 255, 0.2)',
+                            borderDark: 'rgba(255, 255, 255, 0.08)'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* Global Reset & Mobile Viewport Sizing */
+        body {
+            user-select: none;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+        }
+
+        /* Glassmorphism Styles */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.35);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        .dark .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+
+        .glass-dock {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .dark .glass-dock {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Resize Handles */
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            z-index: 10;
+        }
+        .resize-se { bottom: 0; right: 0; cursor: se-resize; }
+        .resize-sw { bottom: 0; left: 0; cursor: sw-resize; }
+        .resize-ne { top: 0; right: 0; cursor: ne-resize; }
+        .resize-nw { top: 0; left: 0; cursor: nw-resize; }
+        .resize-e  { top: 0; right: 0; height: 100%; cursor: e-resize; width: 6px; }
+        .resize-s  { bottom: 0; left: 0; width: 100%; cursor: s-resize; height: 6px; }
+
+        /* Scrollbars & Utilities */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(150, 150, 150, 0.4);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(150, 150, 150, 0.6);
+        }
+
+        /* Hide scrollbars for taskbar */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .window-transition {
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+    </style>
+</head>
+<body class="h-[100dvh] w-screen relative select-none overflow-hidden bg-cover bg-center transition-all duration-500" id="desktopBody">
+
+    <!-- Desktop App Icons Container -->
+    <div id="desktopIcons" class="p-3 sm:p-6 grid grid-cols-3 sm:grid-flow-col sm:grid-rows-6 gap-3 sm:gap-6 w-full sm:w-max h-[calc(100dvh-60px)] z-10 relative overflow-y-auto sm:overflow-hidden content-start">
+        <!-- Generated Dynamically -->
+    </div>
+
+    <!-- Active Windows Layer -->
+    <div id="windowContainer" class="absolute inset-0 pointer-events-none z-20"></div>
+
+    <!-- Start Menu / App Launcher Overlay -->
+    <div id="startMenu" class="hidden absolute bottom-16 left-3 sm:left-6 w-[calc(100vw-24px)] sm:w-96 rounded-2xl glass-panel p-4 sm:p-5 z-50 transform transition-all duration-200 opacity-0 scale-95 shadow-2xl">
+        <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-gray-200/20">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg shadow-md">
+                R
+            </div>
+            <div>
+                <h3 class="font-semibold text-gray-800 dark:text-gray-100 leading-tight">Ryz User</h3>
+                <span id="startAdminStatus" class="text-xs text-gray-500 dark:text-gray-400">Standard Viewer</span>
+            </div>
+        </div>
+
+        <!-- Quick Search -->
+        <div class="relative mb-4">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400 text-sm"></i>
+            <input type="text" id="startSearch" placeholder="Search apps, web shortcuts..." class="w-full pl-9 pr-3 py-1.5 rounded-lg bg-white/40 dark:bg-gray-800/50 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 border border-white/20">
+        </div>
+
+        <!-- App Grid -->
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 px-1">Applications</div>
+        <div id="startAppGrid" class="grid grid-cols-4 gap-3 max-h-64 overflow-y-auto p-1">
+            <!-- Dynamic Apps -->
+        </div>
+
+        <!-- System Controls -->
+        <div class="mt-4 pt-3 border-t border-gray-200/20 flex justify-between items-center px-1">
+            <button onclick="SystemOS.openApp('settings')" class="flex items-center space-x-2 text-xs text-gray-700 dark:text-gray-300 hover:text-indigo-500 transition-colors">
+                <i class="fa-solid fa-gear"></i>
+                <span>Settings</span>
+            </button>
+            <button onclick="SystemOS.restart()" class="flex items-center space-x-2 text-xs text-red-500 hover:text-red-600 transition-colors">
+                <i class="fa-solid fa-power-off"></i>
+                <span>Restart</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- System Control Center Popup -->
+    <div id="controlCenter" class="hidden absolute bottom-16 right-3 sm:right-4 w-72 rounded-2xl glass-panel p-4 z-50 transition-all duration-200 opacity-0 scale-95 shadow-2xl">
+        <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">System Quick Settings</div>
+        
+        <!-- Toggle Tiles -->
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <button id="wifiToggle" onclick="SystemOS.toggleWifi()" class="flex items-center space-x-3 p-2.5 rounded-xl bg-indigo-600 text-white shadow-sm transition-all">
+                <i class="fa-solid fa-wifi text-sm"></i>
+                <div class="text-left">
+                    <div class="text-xs font-medium">Wi-Fi</div>
+                    <div id="wifiStatus" class="text-[10px] opacity-80">Connected</div>
+                </div>
+            </button>
+            <button id="darkToggleBtn" onclick="SystemOS.toggleDarkMode()" class="flex items-center space-x-3 p-2.5 rounded-xl bg-white/30 dark:bg-gray-800/50 text-gray-800 dark:text-gray-200 hover:bg-white/50 transition-all">
+                <i class="fa-solid fa-moon text-sm"></i>
+                <div class="text-left">
+                    <div class="text-xs font-medium">Dark Mode</div>
+                    <div id="darkModeStatus" class="text-[10px] opacity-70">On</div>
+                </div>
+            </button>
+        </div>
+
+        <!-- Brightness Slider -->
+        <div class="mb-3">
+            <div class="flex justify-between text-xs text-gray-700 dark:text-gray-300 mb-1">
+                <span><i class="fa-solid fa-sun mr-1"></i> Brightness</span>
+                <span id="brightnessVal">100%</span>
+            </div>
+            <input type="range" id="brightnessRange" min="30" max="100" value="100" oninput="SystemOS.setBrightness(this.value)" class="w-full accent-indigo-600 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <!-- Volume Slider -->
+        <div class="mb-1">
+            <div class="flex justify-between text-xs text-gray-700 dark:text-gray-300 mb-1">
+                <span><i class="fa-solid fa-volume-high mr-1"></i> Volume</span>
+                <span id="volumeVal">80%</span>
+            </div>
+            <input type="range" id="volumeRange" min="0" max="100" value="80" oninput="SystemOS.setVolume(this.value)" class="w-full accent-indigo-600 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+    </div>
+
+    <!-- Admin Security PIN Modal -->
+    <div id="pinModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="w-full max-w-sm glass-panel rounded-2xl p-6 shadow-2xl text-center space-y-4">
+            <div class="w-12 h-12 rounded-full bg-indigo-600/20 text-indigo-500 mx-auto flex items-center justify-center text-xl">
+                <i class="fa-solid fa-lock"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">Admin Authentication</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Enter PIN to access Admin Settings & Management</p>
+            </div>
+            <input type="password" id="pinInput" maxlength="10" placeholder="Enter PIN (Default: 1234)" class="w-full px-4 py-2.5 text-center text-lg tracking-widest rounded-xl bg-white/40 dark:bg-gray-800/60 border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-800 dark:text-gray-100 placeholder:text-xs">
+            <div class="flex space-x-2">
+                <button onclick="SystemOS.closePinModal()" class="flex-1 py-2 rounded-xl bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-medium">Cancel</button>
+                <button onclick="SystemOS.verifyPin()" class="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700">Unlock</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Taskbar / Dock -->
+    <div class="fixed bottom-0 left-0 right-0 h-14 glass-dock z-40 flex items-center justify-between px-2 sm:px-6">
+        <!-- Left: Start Launcher -->
+        <div class="flex items-center space-x-2 overflow-hidden">
+            <button id="startButton" onclick="SystemOS.toggleStartMenu()" class="w-10 h-10 shrink-0 rounded-xl bg-white/20 hover:bg-white/40 dark:bg-gray-800/40 dark:hover:bg-gray-700/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm transition-all transform active:scale-95">
+                <i class="fa-solid fa-brands fa-windows text-xl"></i>
+            </button>
+            <div class="h-6 w-px bg-gray-300/30 dark:bg-gray-700/50 mx-1 shrink-0"></div>
+            <!-- Running Taskbar Items -->
+            <div id="dockIcons" class="flex items-center space-x-2 overflow-x-auto no-scrollbar"></div>
+        </div>
+
+        <!-- Right: Status Bar Controls & Clock -->
+        <div class="flex items-center space-x-2 sm:space-x-3 text-gray-800 dark:text-gray-200 shrink-0">
+            <button id="adminKeyBtn" onclick="SystemOS.promptPin()" title="Admin Mode Access" class="p-2 rounded-xl hover:bg-white/20 dark:hover:bg-gray-800/40 transition-colors text-xs text-amber-500">
+                <i class="fa-solid fa-key"></i>
+            </button>
+            <button onclick="SystemOS.toggleControlCenter()" class="flex items-center space-x-2 px-2 py-1.5 rounded-xl hover:bg-white/20 dark:hover:bg-gray-800/40 transition-colors text-xs">
+                <i class="fa-solid fa-wifi"></i>
+                <i class="fa-solid fa-volume-high"></i>
+                <i class="fa-solid fa-battery-three-quarters text-green-500"></i>
+            </button>
+            <div class="h-5 w-px bg-gray-300/30 dark:bg-gray-700/50"></div>
+            <!-- Clock Widget -->
+            <button onclick="SystemOS.toggleControlCenter()" class="text-right leading-tight px-1.5 sm:px-2 py-1 rounded-xl hover:bg-white/20 dark:hover:bg-gray-800/40 transition-colors">
+                <div id="taskbarTime" class="text-xs font-semibold">12:00 PM</div>
+                <div id="taskbarDate" class="text-[10px] opacity-75 hidden sm:block">Oct 23, 2026</div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Notifications Toast Layer -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none max-w-xs w-full"></div>
+
+    <!-- JS Logic Embedded -->
+    <script>
+        /**
+         * Ryz OS Applications Config
+         */
+        const APPS = {
+            solar: {
+                id: 'solar',
+                title: 'Solar Sunrise',
+                icon: 'fa-sun',
+                color: 'from-amber-500 to-orange-600',
+                url: 'https://solar-sunrise.netlify.app/',
+                width: 800,
+                height: 520,
+                content: renderIframeApp
+            },
+            defnotahxdd: {
+                id: 'defnotahxdd',
+                title: 'Defnotahxdd App',
+                icon: 'fa-fire',
+                color: 'from-purple-500 to-pink-600',
+                url: 'https://defnotahxdd.netlify.app/',
+                width: 800,
+                height: 520,
+                content: renderIframeApp
+            },
+            ashhal: {
+                id: 'ashhal',
+                title: 'Muhammad Ashhal',
+                icon: 'fa-user-gear',
+                color: 'from-blue-500 to-cyan-600',
+                url: 'https://muhammad-ashhal.vercel.app/',
+                width: 800,
+                height: 520,
+                content: renderIframeApp
+            },
+            gallery: {
+                id: 'gallery',
+                title: 'Gallery',
+                icon: 'fa-images',
+                color: 'from-emerald-400 to-teal-600',
+                width: 750,
+                height: 500,
+                content: renderGalleryApp
+            },
+            explorer: {
+                id: 'explorer',
+                title: 'File Explorer',
+                icon: 'fa-folder-open',
+                color: 'from-amber-400 to-amber-600',
+                width: 720,
+                height: 480,
+                content: renderExplorerApp
+            },
+            notepad: {
+                id: 'notepad',
+                title: 'Notepad',
+                icon: 'fa-file-lines',
+                color: 'from-blue-400 to-blue-600',
+                width: 600,
+                height: 420,
+                content: renderNotepadApp
+            },
+            calculator: {
+                id: 'calculator',
+                title: 'Calculator',
+                icon: 'fa-calculator',
+                color: 'from-orange-400 to-amber-600',
+                width: 320,
+                height: 440,
+                content: renderCalculatorApp
+            },
+            settings: {
+                id: 'settings',
+                title: 'Settings',
+                icon: 'fa-gear',
+                color: 'from-indigo-500 to-purple-600',
+                width: 640,
+                height: 480,
+                content: renderSettingsApp
+            }
+        };
+
+        const DEFAULT_WALLPAPERS = [
+            { name: 'Aurora', url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1920&auto=format&fit=crop' },
+            { name: 'Cosmic Sky', url: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?q=80&w=1920&auto=format&fit=crop' },
+            { name: 'Minimal Mountain', url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=1920&auto=format&fit=crop' },
+            { name: 'Gradient Dusk', url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=1920&auto=format&fit=crop' }
+        ];
+
+        /**
+         * System OS Engine
+         */
+        const SystemOS = {
+            windows: {},
+            activeZIndex: 100,
+            activeWindowId: null,
+            wifiEnabled: true,
+            volume: 80,
+            brightness: 100,
+            darkMode: true,
+            wallpaperIndex: 0,
+            customWallpaperUrl: '',
+            isAdmin: false,
+            adminPin: '1234',
+            galleryImages: [
+                'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop',
+                'https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=800&auto=format&fit=crop',
+                'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=800&auto=format&fit=crop'
+            ],
+            fileSystem: {
+                'Documents': {
+                    'Welcome.txt': 'Welcome to Ryz OS!\n\nA customized web operating system.\n- Double click or tap icons to open applications.\n- PIN Protected Admin Mode.\n- Saved settings persist in LocalStorage.'
+                },
+                'Pictures': {},
+                'Notes.txt': 'System Notes:\n- Solar Sunrise integrated\n- Defnotahxdd integrated\n- Ashhal Portfolio integrated'
+            },
+
+            init() {
+                this.loadSettings();
+                this.renderDesktopIcons();
+                this.renderStartMenu();
+                this.startClock();
+                this.setupGlobalEventListeners();
+                this.applyTheme();
+                this.applyWallpaper();
+                this.updateAdminUI();
+
+                setTimeout(() => {
+                    this.notify('Ryz OS Ready', 'System loaded successfully.');
+                }, 500);
+            },
+
+            loadSettings() {
+                const savedFS = localStorage.getItem('ryz_fs');
+                if (savedFS) {
+                    try { this.fileSystem = JSON.parse(savedFS); } catch(e) {}
+                }
+                const savedDark = localStorage.getItem('ryz_dark');
+                if (savedDark !== null) {
+                    this.darkMode = savedDark === 'true';
+                }
+                const savedWp = localStorage.getItem('ryz_wp');
+                if (savedWp !== null) {
+                    this.wallpaperIndex = parseInt(savedWp) || 0;
+                }
+                const savedCustomWp = localStorage.getItem('ryz_custom_wp');
+                if (savedCustomWp) {
+                    this.customWallpaperUrl = savedCustomWp;
+                }
+                const savedGallery = localStorage.getItem('ryz_gallery');
+                if (savedGallery) {
+                    try { this.galleryImages = JSON.parse(savedGallery); } catch(e) {}
+                }
+                const savedPin = localStorage.getItem('ryz_pin');
+                if (savedPin) {
+                    this.adminPin = savedPin;
+                }
+            },
+
+            saveFileSystem() {
+                localStorage.setItem('ryz_fs', JSON.stringify(this.fileSystem));
+            },
+
+            saveGallery() {
+                localStorage.setItem('ryz_gallery', JSON.stringify(this.galleryImages));
+            },
+
+            renderDesktopIcons() {
+                const container = document.getElementById('desktopIcons');
+                container.innerHTML = '';
+                Object.values(APPS).forEach(app => {
+                    const iconEl = document.createElement('div');
+                    iconEl.className = 'flex flex-col items-center justify-center p-2 rounded-xl hover:bg-white/20 dark:hover:bg-white/10 cursor-pointer text-white text-center transition-all duration-150 group w-20 h-20 sm:w-22 sm:h-22 mx-auto sm:mx-0';
+                    iconEl.onclick = () => this.openApp(app.id);
+                    iconEl.innerHTML = `
+                        <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr ${app.color} flex items-center justify-center text-white text-xl sm:text-2xl shadow-lg group-hover:scale-105 transition-transform">
+                            <i class="fa-solid ${app.icon}"></i>
+                        </div>
+                        <span class="text-[11px] sm:text-xs font-medium mt-1 text-gray-800 dark:text-gray-100 drop-shadow-md truncate w-full text-center">${app.title}</span>
+                    `;
+                    container.appendChild(iconEl);
+                });
+            },
+
+            renderStartMenu() {
+                const grid = document.getElementById('startAppGrid');
+                grid.innerHTML = '';
+                Object.values(APPS).forEach(app => {
+                    const item = document.createElement('button');
+                    item.className = 'flex flex-col items-center p-2 rounded-xl hover:bg-white/30 dark:hover:bg-gray-800/60 transition-colors group';
+                    item.onclick = () => {
+                        this.openApp(app.id);
+                        this.toggleStartMenu(false);
+                    };
+                    item.innerHTML = `
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr ${app.color} flex items-center justify-center text-white text-lg shadow-sm group-hover:scale-105 transition-transform mb-1">
+                            <i class="fa-solid ${app.icon}"></i>
+                        </div>
+                        <span class="text-[10px] text-gray-700 dark:text-gray-300 font-medium truncate w-full text-center">${app.title}</span>
+                    `;
+                    grid.appendChild(item);
+                });
+            },
+
+            openApp(appId, params = {}) {
+                const isMobile = window.innerWidth < 768;
+
+                if (this.windows[appId]) {
+                    this.restoreWindow(appId);
+                    this.focusWindow(appId);
+                    return;
+                }
+
+                const app = APPS[appId];
+                if (!app) return;
+
+                const winId = appId;
+                const win = document.createElement('div');
+                win.id = `win-${winId}`;
+                win.className = 'absolute rounded-2xl glass-panel shadow-2xl flex flex-col overflow-hidden pointer-events-auto window-transition border border-white/30 dark:border-white/10';
+                
+                let width = isMobile ? window.innerWidth : app.width;
+                let height = isMobile ? window.innerHeight - 56 : app.height;
+                let left = isMobile ? 0 : Math.max(20, Math.min(window.innerWidth - app.width - 20, 80 + Object.keys(this.windows).length * 20));
+                let top = isMobile ? 0 : Math.max(20, Math.min(window.innerHeight - app.height - 80, 40 + Object.keys(this.windows).length * 20));
+
+                win.style.width = `${width}px`;
+                win.style.height = `${height}px`;
+                win.style.left = `${left}px`;
+                win.style.top = `${top}px`;
+                win.style.zIndex = ++this.activeZIndex;
+
+                if (isMobile) win.classList.add('rounded-none');
+
+                win.innerHTML = `
+                    <div class="h-10 bg-white/30 dark:bg-gray-900/40 px-3 sm:px-4 flex items-center justify-between cursor-move select-none border-b border-white/10" id="win-header-${winId}">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid ${app.icon} text-sm text-indigo-500"></i>
+                            <span class="text-xs font-semibold text-gray-800 dark:text-gray-200 tracking-wide">${app.title}</span>
+                        </div>
+                        <div class="flex items-center space-x-2" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+                            <button onclick="SystemOS.minimizeWindow('${winId}')" class="w-6 h-6 sm:w-3.5 sm:h-3.5 rounded-full bg-amber-400 hover:bg-amber-500 transition-colors flex items-center justify-center text-[10px] text-amber-900">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                            <button onclick="SystemOS.maximizeWindow('${winId}')" class="hidden sm:flex w-3.5 h-3.5 rounded-full bg-green-400 hover:bg-green-500 transition-colors items-center justify-center text-[10px] text-green-900">
+                                <i class="fa-solid fa-expand"></i>
+                            </button>
+                            <button onclick="SystemOS.closeWindow('${winId}')" class="w-6 h-6 sm:w-3.5 sm:h-3.5 rounded-full bg-red-400 hover:bg-red-500 transition-colors flex items-center justify-center text-[10px] text-red-900">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-hidden relative text-gray-800 dark:text-gray-100" id="win-body-${winId}">
+                        ${app.content(app, params)}
+                    </div>
+
+                    <div class="resize-handle resize-se" onmousedown="SystemOS.startResize(event, '${winId}', 'se')"></div>
+                    <div class="resize-handle resize-sw" onmousedown="SystemOS.startResize(event, '${winId}', 'sw')"></div>
+                    <div class="resize-handle resize-ne" onmousedown="SystemOS.startResize(event, '${winId}', 'ne')"></div>
+                    <div class="resize-handle resize-nw" onmousedown="SystemOS.startResize(event, '${winId}', 'nw')"></div>
+                    <div class="resize-handle resize-e" onmousedown="SystemOS.startResize(event, '${winId}', 'e')"></div>
+                    <div class="resize-handle resize-s" onmousedown="SystemOS.startResize(event, '${winId}', 's')"></div>
+                `;
+
+                // Touch and Mouse Drag bindings
+                const header = win.querySelector(`#win-header-${winId}`);
+                header.addEventListener('mousedown', (e) => this.startDrag(e, winId));
+                header.addEventListener('touchstart', (e) => this.startDragTouch(e, winId), { passive: false });
+
+                win.addEventListener('mousedown', () => this.focusWindow(winId));
+                win.addEventListener('touchstart', () => this.focusWindow(winId), { passive: true });
+
+                document.getElementById('windowContainer').appendChild(win);
+
+                this.windows[winId] = {
+                    element: win,
+                    app: app,
+                    isMaximized: isMobile,
+                    isMinimized: false,
+                    prevBounds: { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` }
+                };
+
+                this.focusWindow(winId);
+                this.updateDock();
+            },
+
+            focusWindow(winId) {
+                if (!this.windows[winId]) return;
+                this.activeZIndex++;
+                this.windows[winId].element.style.zIndex = this.activeZIndex;
+                this.activeWindowId = winId;
+                this.updateDock();
+            },
+
+            minimizeWindow(winId) {
+                const w = this.windows[winId];
+                if (!w) return;
+                w.isMinimized = true;
+                w.element.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+                w.element.classList.remove('pointer-events-auto');
+                this.updateDock();
+            },
+
+            restoreWindow(winId) {
+                const w = this.windows[winId];
+                if (!w) return;
+                w.isMinimized = false;
+                w.element.classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+                w.element.classList.add('pointer-events-auto');
+                this.focusWindow(winId);
+            },
+
+            maximizeWindow(winId) {
+                const w = this.windows[winId];
+                if (!w) return;
+                const el = w.element;
+
+                if (!w.isMaximized) {
+                    w.prevBounds = {
+                        left: el.style.left,
+                        top: el.style.top,
+                        width: el.style.width,
+                        height: el.style.height
+                    };
+                    el.style.left = '0px';
+                    el.style.top = '0px';
+                    el.style.width = '100vw';
+                    el.style.height = 'calc(100dvh - 56px)';
+                    el.classList.add('rounded-none');
+                    w.isMaximized = true;
+                } else {
+                    el.style.left = w.prevBounds.left;
+                    el.style.top = w.prevBounds.top;
+                    el.style.width = w.prevBounds.width;
+                    el.style.height = w.prevBounds.height;
+                    el.classList.remove('rounded-none');
+                    w.isMaximized = false;
+                }
+            },
+
+            closeWindow(winId) {
+                const w = this.windows[winId];
+                if (!w) return;
+                w.element.remove();
+                delete this.windows[winId];
+                this.updateDock();
+            },
+
+            updateDock() {
+                const container = document.getElementById('dockIcons');
+                container.innerHTML = '';
+                Object.keys(this.windows).forEach(winId => {
+                    const w = this.windows[winId];
+                    const btn = document.createElement('button');
+                    const isActive = this.activeWindowId === winId && !w.isMinimized;
+                    btn.className = `flex items-center space-x-2 px-2.5 py-1.5 rounded-xl transition-all text-xs font-medium shrink-0 ${
+                        isActive 
+                            ? 'bg-white/40 dark:bg-gray-700/70 text-indigo-600 dark:text-indigo-300 shadow-sm border border-white/20' 
+                            : 'bg-white/10 dark:bg-gray-800/30 text-gray-700 dark:text-gray-300 hover:bg-white/20'
+                    }`;
+                    btn.onclick = () => {
+                        if (w.isMinimized) {
+                            this.restoreWindow(winId);
+                        } else if (isActive) {
+                            this.minimizeWindow(winId);
+                        } else {
+                            this.focusWindow(winId);
+                        }
+                    };
+                    btn.innerHTML = `
+                        <i class="fa-solid ${w.app.icon}"></i>
+                        <span class="hidden sm:inline truncate max-w-[90px]">${w.app.title}</span>
+                    `;
+                    container.appendChild(btn);
+                });
+            },
+
+            startDrag(e, winId) {
+                const w = this.windows[winId];
+                if (!w || w.isMaximized) return;
+
+                this.focusWindow(winId);
+                const el = w.element;
+                let startX = e.clientX;
+                let startY = e.clientY;
+                let initialLeft = el.offsetLeft;
+                let initialTop = el.offsetTop;
+
+                el.classList.remove('window-transition');
+
+                const onMouseMove = (moveEv) => {
+                    const dx = moveEv.clientX - startX;
+                    const dy = moveEv.clientY - startY;
+                    el.style.left = `${Math.max(0, Math.min(window.innerWidth - 60, initialLeft + dx))}px`;
+                    el.style.top = `${Math.max(0, Math.min(window.innerHeight - 80, initialTop + dy))}px`;
+                };
+
+                const onMouseUp = () => {
+                    el.classList.add('window-transition');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            },
+
+            startDragTouch(e, winId) {
+                const w = this.windows[winId];
+                if (!w || w.isMaximized || e.touches.length !== 1) return;
+
+                this.focusWindow(winId);
+                const el = w.element;
+                let touch = e.touches[0];
+                let startX = touch.clientX;
+                let startY = touch.clientY;
+                let initialLeft = el.offsetLeft;
+                let initialTop = el.offsetTop;
+
+                el.classList.remove('window-transition');
+
+                const onTouchMove = (moveEv) => {
+                    if (moveEv.touches.length !== 1) return;
+                    let t = moveEv.touches[0];
+                    const dx = t.clientX - startX;
+                    const dy = t.clientY - startY;
+                    el.style.left = `${Math.max(0, Math.min(window.innerWidth - 60, initialLeft + dx))}px`;
+                    el.style.top = `${Math.max(0, Math.min(window.innerHeight - 80, initialTop + dy))}px`;
+                };
+
+                const onTouchEnd = () => {
+                    el.classList.add('window-transition');
+                    document.removeEventListener('touchmove', onTouchMove);
+                    document.removeEventListener('touchend', onTouchEnd);
+                };
+
+                document.addEventListener('touchmove', onTouchMove, { passive: false });
+                document.addEventListener('touchend', onTouchEnd);
+            },
+
+            startResize(e, winId, handle) {
+                e.stopPropagation();
+                const w = this.windows[winId];
+                if (!w || w.isMaximized) return;
+
+                this.focusWindow(winId);
+                const el = w.element;
+                let startX = e.clientX;
+                let startY = e.clientY;
+                let startW = el.offsetWidth;
+                let startH = el.offsetHeight;
+                let startL = el.offsetLeft;
+                let startT = el.offsetTop;
+
+                el.classList.remove('window-transition');
+
+                const onMouseMove = (moveEv) => {
+                    const dx = moveEv.clientX - startX;
+                    const dy = moveEv.clientY - startY;
+
+                    if (handle.includes('e')) el.style.width = `${Math.max(280, startW + dx)}px`;
+                    if (handle.includes('s')) el.style.height = `${Math.max(200, startH + dy)}px`;
+                    if (handle.includes('w')) {
+                        const newW = Math.max(280, startW - dx);
+                        if (newW > 280) {
+                            el.style.width = `${newW}px`;
+                            el.style.left = `${startL + dx}px`;
+                        }
+                    }
+                    if (handle.includes('n')) {
+                        const newH = Math.max(200, startH - dy);
+                        if (newH > 200) {
+                            el.style.height = `${newH}px`;
+                            el.style.top = `${startT + dy}px`;
+                        }
+                    }
+                };
+
+                const onMouseUp = () => {
+                    el.classList.add('window-transition');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            },
+
+            // Security PIN Management
+            promptPin() {
+                if (this.isAdmin) {
+                    this.notify('Admin Mode', 'Already unlocked as Admin!');
+                    return;
+                }
+                document.getElementById('pinInput').value = '';
+                document.getElementById('pinModal').classList.remove('hidden');
+                document.getElementById('pinInput').focus();
+            },
+
+            closePinModal() {
+                document.getElementById('pinModal').classList.add('hidden');
+            },
+
+            verifyPin() {
+                const val = document.getElementById('pinInput').value;
+                if (val === this.adminPin) {
+                    this.isAdmin = true;
+                    this.closePinModal();
+                    this.updateAdminUI();
+                    this.notify('Admin Access Granted', 'Unlocked Admin privileges.');
+                    if (this.windows['gallery']) renderGalleryView();
+                    if (this.windows['settings']) SystemOS.openApp('settings');
+                } else {
+                    this.notify('Access Denied', 'Incorrect PIN code!');
+                }
+            },
+
+            changePin() {
+                if (!this.isAdmin) return;
+                const newPin = prompt("Enter new Admin PIN:", this.adminPin);
+                if (newPin && newPin.trim() !== "") {
+                    this.adminPin = newPin.trim();
+                    localStorage.setItem('ryz_pin', this.adminPin);
+                    this.notify('PIN Updated', 'New Admin PIN saved successfully.');
+                }
+            },
+
+            updateAdminUI() {
+                const status = document.getElementById('startAdminStatus');
+                const keyBtn = document.getElementById('adminKeyBtn');
+                if (status) {
+                    status.innerText = this.isAdmin ? 'Admin Unlocked' : 'Standard Viewer';
+                    status.className = this.isAdmin ? 'text-xs text-green-400 font-semibold' : 'text-xs text-gray-500 dark:text-gray-400';
+                }
+                if (keyBtn) {
+                    keyBtn.className = this.isAdmin 
+                        ? 'p-2 rounded-xl bg-amber-500/20 text-amber-500 text-xs' 
+                        : 'p-2 rounded-xl hover:bg-white/20 dark:hover:bg-gray-800/40 transition-colors text-xs text-amber-500';
+                }
+            },
+
+            toggleStartMenu(force) {
+                const menu = document.getElementById('startMenu');
+                const isHidden = menu.classList.contains('hidden');
+                const show = force !== undefined ? force : isHidden;
+
+                if (show) {
+                    this.toggleControlCenter(false);
+                    menu.classList.remove('hidden');
+                    setTimeout(() => menu.classList.remove('opacity-0', 'scale-95'), 10);
+                } else {
+                    menu.classList.add('opacity-0', 'scale-95');
+                    setTimeout(() => menu.classList.add('hidden'), 200);
+                }
+            },
+
+            toggleControlCenter(force) {
+                const cc = document.getElementById('controlCenter');
+                const isHidden = cc.classList.contains('hidden');
+                const show = force !== undefined ? force : isHidden;
+
+                if (show) {
+                    this.toggleStartMenu(false);
+                    cc.classList.remove('hidden');
+                    setTimeout(() => cc.classList.remove('opacity-0', 'scale-95'), 10);
+                } else {
+                    cc.classList.add('opacity-0', 'scale-95');
+                    setTimeout(() => cc.classList.add('hidden'), 200);
+                }
+            },
+
+            toggleDarkMode() {
+                this.darkMode = !this.darkMode;
+                localStorage.setItem('ryz_dark', this.darkMode);
+                this.applyTheme();
+            },
+
+            applyTheme() {
+                if (this.darkMode) {
+                    document.documentElement.classList.add('dark');
+                    document.getElementById('darkModeStatus').innerText = 'On';
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    document.getElementById('darkModeStatus').innerText = 'Off';
+                }
+            },
+
+            setWallpaper(index) {
+                if (!this.isAdmin) {
+                    this.promptPin();
+                    return;
+                }
+                this.wallpaperIndex = index;
+                this.customWallpaperUrl = '';
+                localStorage.setItem('ryz_wp', index);
+                localStorage.removeItem('ryz_custom_wp');
+                this.applyWallpaper();
+            },
+
+            setCustomWallpaper(url) {
+                if (!this.isAdmin) {
+                    this.promptPin();
+                    return;
+                }
+                if (!url) return;
+                this.customWallpaperUrl = url;
+                localStorage.setItem('ryz_custom_wp', url);
+                this.applyWallpaper();
+            },
+
+            applyWallpaper() {
+                const body = document.getElementById('desktopBody');
+                if (this.customWallpaperUrl) {
+                    body.style.backgroundImage = `url('${this.customWallpaperUrl}')`;
+                } else {
+                    const wp = DEFAULT_WALLPAPERS[this.wallpaperIndex] || DEFAULT_WALLPAPERS[0];
+                    body.style.backgroundImage = `url('${wp.url}')`;
+                }
+            },
+
+            toggleWifi() {
+                this.wifiEnabled = !this.wifiEnabled;
+                const btn = document.getElementById('wifiToggle');
+                const status = document.getElementById('wifiStatus');
+                if (this.wifiEnabled) {
+                    btn.classList.add('bg-indigo-600', 'text-white');
+                    status.innerText = 'Connected';
+                    this.notify('Network', 'Connected to Ryz-WiFi');
+                } else {
+                    btn.classList.remove('bg-indigo-600', 'text-white');
+                    status.innerText = 'Disconnected';
+                    this.notify('Network', 'Wi-Fi turned off');
+                }
+            },
+
+            setBrightness(val) {
+                this.brightness = val;
+                document.getElementById('brightnessVal').innerText = `${val}%`;
+                document.getElementById('desktopBody').style.filter = `brightness(${val}%)`;
+            },
+
+            setVolume(val) {
+                this.volume = val;
+                document.getElementById('volumeVal').innerText = `${val}%`;
+            },
+
+            startClock() {
+                const update = () => {
+                    const now = new Date();
+                    document.getElementById('taskbarTime').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    document.getElementById('taskbarDate').innerText = now.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+                };
+                update();
+                setInterval(update, 1000);
+            },
+
+            notify(title, msg) {
+                const container = document.getElementById('toastContainer');
+                const toast = document.createElement('div');
+                toast.className = 'pointer-events-auto rounded-xl glass-panel p-3 shadow-lg flex items-start space-x-3 w-full transform transition-all duration-300 translate-x-12 opacity-0';
+                toast.innerHTML = `
+                    <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-sm shrink-0">
+                        <i class="fa-solid fa-bell"></i>
+                    </div>
+                    <div class="flex-1 overflow-hidden">
+                        <h4 class="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">${title}</h4>
+                        <p class="text-[11px] text-gray-600 dark:text-gray-300 leading-tight mt-0.5">${msg}</p>
+                    </div>
+                `;
+                container.appendChild(toast);
+
+                setTimeout(() => toast.classList.remove('translate-x-12', 'opacity-0'), 10);
+                setTimeout(() => {
+                    toast.classList.add('translate-x-12', 'opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }, 3500);
+            },
+
+            restart() {
+                this.notify('System', 'Restarting Ryz OS...');
+                setTimeout(() => window.location.reload(), 1000);
+            },
+
+            setupGlobalEventListeners() {
+                document.getElementById('desktopBody').addEventListener('click', (e) => {
+                    if (e.target.id === 'desktopBody' || e.target.id === 'desktopIcons') {
+                        this.toggleStartMenu(false);
+                        this.toggleControlCenter(false);
+                    }
+                });
+
+                document.getElementById('startSearch').addEventListener('input', (e) => {
+                    const q = e.target.value.toLowerCase();
+                    const items = document.getElementById('startAppGrid').children;
+                    Array.from(items).forEach((item, idx) => {
+                        const app = Object.values(APPS)[idx];
+                        item.style.display = app.title.toLowerCase().includes(q) ? 'flex' : 'none';
+                    });
+                });
+            }
+        };
+
+        /**
+         * App Renderers
+         */
+
+        // Embedded iFrame Web Apps
+        function renderIframeApp(app) {
+            return `
+                <div class="w-full h-full bg-white relative">
+                    <iframe src="${app.url}" class="w-full h-full border-none"></iframe>
+                </div>
+            `;
+        }
+
+        // Interactive Gallery App
+        function renderGalleryApp() {
+            setTimeout(() => renderGalleryView(), 50);
+            return `<div id="galleryAppContainer" class="h-full flex flex-col bg-white/10 dark:bg-gray-900/20"></div>`;
+        }
+
+        function renderGalleryView() {
+            const container = document.getElementById('galleryAppContainer');
+            if (!container) return;
+
+            container.innerHTML = `
+                <div class="p-3 bg-white/20 dark:bg-gray-900/30 border-b border-white/10 flex items-center justify-between text-xs">
+                    <div class="font-semibold text-gray-700 dark:text-gray-200">
+                        <i class="fa-solid fa-images mr-1"></i> Gallery Photos (${SystemOS.galleryImages.length})
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        ${SystemOS.isAdmin ? `
+                            <label class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg cursor-pointer transition-colors flex items-center space-x-1">
+                                <i class="fa-solid fa-upload"></i>
+                                <span>Upload Photo</span>
+                                <input type="file" accept="image/*" class="hidden" onchange="uploadGalleryImage(event)">
+                            </label>
+                        ` : `
+                            <button onclick="SystemOS.promptPin()" class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 rounded-lg transition-colors flex items-center space-x-1">
+                                <i class="fa-solid fa-key"></i>
+                                <span>Admin Unlock</span>
+                            </button>
+                        `}
+                    </div>
+                </div>
+                <div class="flex-1 p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    ${SystemOS.galleryImages.map((img, idx) => `
+                        <div class="group relative rounded-xl overflow-hidden glass-panel h-36 bg-gray-800">
+                            <img src="${img}" class="w-full h-full object-cover group-hover:scale-105 transition-transform">
+                            ${SystemOS.isAdmin ? `
+                                <button onclick="deleteGalleryImage(${idx})" class="absolute top-2 right-2 w-7 h-7 bg-red-600/80 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs shadow-md transition-all">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function uploadGalleryImage(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                SystemOS.galleryImages.unshift(evt.target.result);
+                SystemOS.saveGallery();
+                renderGalleryView();
+                SystemOS.notify('Gallery', 'Image uploaded persistently!');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function deleteGalleryImage(index) {
+            if (!SystemOS.isAdmin) return;
+            SystemOS.galleryImages.splice(index, 1);
+            SystemOS.saveGallery();
+            renderGalleryView();
+            SystemOS.notify('Gallery', 'Image deleted.');
+        }
+
+        // File Explorer
+        function renderExplorerApp() {
+            return `
+                <div class="flex h-full text-xs">
+                    <div class="w-36 sm:w-44 bg-white/20 dark:bg-gray-900/30 p-3 border-r border-white/10 space-y-1">
+                        <div class="font-semibold text-gray-500 dark:text-gray-400 text-[10px] uppercase mb-2">Places</div>
+                        <button onclick="ExplorerApp.navigate('root')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/30 dark:hover:bg-gray-800/50 flex items-center space-x-2 text-indigo-500">
+                            <i class="fa-solid fa-hard-drive"></i><span>Root</span>
+                        </button>
+                        <button onclick="ExplorerApp.navigate('Documents')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/30 dark:hover:bg-gray-800/50 flex items-center space-x-2">
+                            <i class="fa-solid fa-folder text-amber-400"></i><span>Documents</span>
+                        </button>
+                    </div>
+                    <div class="flex-1 flex flex-col bg-white/10 dark:bg-gray-900/10">
+                        <div class="p-2 border-b border-white/10 flex items-center justify-between bg-white/20 dark:bg-gray-900/20">
+                            <div id="explorerBreadcrumb" class="font-medium text-gray-700 dark:text-gray-300">/Root</div>
+                            <button onclick="ExplorerApp.createNewFile()" class="px-2.5 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center space-x-1">
+                                <i class="fa-solid fa-plus"></i><span>New File</span>
+                            </button>
+                        </div>
+                        <div id="explorerFileList" class="p-4 grid grid-cols-3 sm:grid-cols-4 gap-4 overflow-y-auto flex-1"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        const ExplorerApp = {
+            currentPath: 'root',
+            navigate(path) {
+                this.currentPath = path;
+                const breadcrumb = document.getElementById('explorerBreadcrumb');
+                if (breadcrumb) breadcrumb.innerText = `/${path}`;
+
+                const list = document.getElementById('explorerFileList');
+                if (!list) return;
+                list.innerHTML = '';
+
+                let items = SystemOS.fileSystem;
+                if (path !== 'root' && items[path]) items = items[path];
+
+                if (typeof items === 'object') {
+                    Object.keys(items).forEach(key => {
+                        const isFolder = typeof items[key] === 'object';
+                        const card = document.createElement('div');
+                        card.className = 'flex flex-col items-center justify-center p-3 rounded-xl hover:bg-white/30 dark:hover:bg-gray-800/40 cursor-pointer border border-transparent hover:border-white/20 transition-all text-center';
+                        card.onclick = () => {
+                            if (isFolder) {
+                                this.navigate(key);
+                            } else {
+                                SystemOS.openApp('notepad', { file: key, content: items[key] });
+                            }
+                        };
+                        card.innerHTML = `
+                            <i class="fa-solid ${isFolder ? 'fa-folder text-amber-400 text-3xl' : 'fa-file-lines text-indigo-400 text-3xl'} mb-2"></i>
+                            <span class="truncate w-full text-xs font-medium">${key}</span>
+                        `;
+                        list.appendChild(card);
+                    });
+                }
+            },
+            createNewFile() {
+                const fileName = prompt("Enter new file name:", "NewNote.txt");
+                if (!fileName) return;
+                if (this.currentPath === 'root') {
+                    SystemOS.fileSystem[fileName] = "New note content.";
+                } else if (SystemOS.fileSystem[this.currentPath]) {
+                    SystemOS.fileSystem[this.currentPath][fileName] = "New note content.";
+                }
+                SystemOS.saveFileSystem();
+                this.navigate(this.currentPath);
+            }
+        };
+
+        // Notepad
+        function renderNotepadApp(app, params = {}) {
+            const fileName = params.file || 'Untitled.txt';
+            const content = params.content || '';
+            return `
+                <div class="flex flex-col h-full">
+                    <div class="p-2 bg-white/20 dark:bg-gray-900/30 border-b border-white/10 flex items-center justify-between">
+                        <input type="text" id="notepadTitle" value="${fileName}" class="bg-transparent font-medium text-xs text-gray-800 dark:text-gray-100 focus:outline-none border-b border-transparent focus:border-indigo-500 px-1">
+                        <button onclick="NotepadApp.save()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-medium transition-colors flex items-center space-x-1">
+                            <i class="fa-solid fa-floppy-disk"></i><span>Save</span>
+                        </button>
+                    </div>
+                    <textarea id="notepadTextarea" class="flex-1 w-full p-3 bg-transparent text-xs font-mono text-gray-800 dark:text-gray-200 focus:outline-none resize-none leading-relaxed" placeholder="Type your text here...">${content}</textarea>
+                </div>
+            `;
+        }
+
+        const NotepadApp = {
+            save() {
+                const title = document.getElementById('notepadTitle').value || 'Untitled.txt';
+                const text = document.getElementById('notepadTextarea').value;
+                SystemOS.fileSystem[title] = text;
+                SystemOS.saveFileSystem();
+                SystemOS.notify('Notepad', `Saved: ${title}`);
+            }
+        };
+
+        // Calculator
+        function renderCalculatorApp() {
+            return `
+                <div class="flex flex-col h-full p-4 bg-gray-900 text-white">
+                    <div id="calcDisplay" class="h-16 bg-gray-800 rounded-xl p-3 text-right text-2xl font-mono flex items-center justify-end mb-4 border border-gray-700 overflow-x-auto">0</div>
+                    <div class="grid grid-cols-4 gap-2 flex-1 text-sm font-semibold">
+                        <button onclick="CalcApp.clear()" class="bg-gray-700 hover:bg-gray-600 rounded-xl text-red-400">C</button>
+                        <button onclick="CalcApp.press('/')" class="bg-indigo-600 hover:bg-indigo-500 rounded-xl">÷</button>
+                        <button onclick="CalcApp.press('*')" class="bg-indigo-600 hover:bg-indigo-500 rounded-xl">×</button>
+                        <button onclick="CalcApp.backspace()" class="bg-gray-700 hover:bg-gray-600 rounded-xl"><i class="fa-solid fa-backspace"></i></button>
+                        
+                        <button onclick="CalcApp.press('7')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">7</button>
+                        <button onclick="CalcApp.press('8')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">8</button>
+                        <button onclick="CalcApp.press('9')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">9</button>
+                        <button onclick="CalcApp.press('-')" class="bg-indigo-600 hover:bg-indigo-500 rounded-xl">-</button>
+                        
+                        <button onclick="CalcApp.press('4')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">4</button>
+                        <button onclick="CalcApp.press('5')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">5</button>
+                        <button onclick="CalcApp.press('6')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">6</button>
+                        <button onclick="CalcApp.press('+')" class="bg-indigo-600 hover:bg-indigo-500 rounded-xl">+</button>
+                        
+                        <button onclick="CalcApp.press('1')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">1</button>
+                        <button onclick="CalcApp.press('2')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">2</button>
+                        <button onclick="CalcApp.press('3')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">3</button>
+                        <button onclick="CalcApp.eval()" class="bg-emerald-600 hover:bg-emerald-500 rounded-xl row-span-2">=</button>
+                        
+                        <button onclick="CalcApp.press('0')" class="col-span-2 bg-gray-800 hover:bg-gray-700 rounded-xl">0</button>
+                        <button onclick="CalcApp.press('.')" class="bg-gray-800 hover:bg-gray-700 rounded-xl">.</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        const CalcApp = {
+            expr: '',
+            update() {
+                document.getElementById('calcDisplay').innerText = this.expr || '0';
+            },
+            press(val) {
+                this.expr += val;
+                this.update();
+            },
+            clear() {
+                this.expr = '';
+                this.update();
+            },
+            backspace() {
+                this.expr = this.expr.slice(0, -1);
+                this.update();
+            },
+            eval() {
+                try {
+                    this.expr = eval(this.expr).toString();
+                } catch(e) {
+                    this.expr = 'Error';
+                }
+                this.update();
+            }
+        };
+
+        // System Settings
+        function renderSettingsApp() {
+            return `
+                <div class="p-5 overflow-y-auto h-full text-xs space-y-6">
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-semibold text-indigo-500">Desktop Wallpaper</h3>
+                            ${!SystemOS.isAdmin ? `
+                                <span class="text-[10px] text-amber-500 font-medium"><i class="fa-solid fa-lock mr-1"></i> Admin Restricted</span>
+                            ` : ''}
+                        </div>
+
+                        ${SystemOS.isAdmin ? `
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                                ${DEFAULT_WALLPAPERS.map((wp, idx) => `
+                                    <div onclick="SystemOS.setWallpaper(${idx})" class="cursor-pointer group rounded-xl overflow-hidden border-2 ${SystemOS.wallpaperIndex === idx && !SystemOS.customWallpaperUrl ? 'border-indigo-500' : 'border-transparent'}">
+                                        <img src="${wp.url}" class="h-20 w-full object-cover group-hover:scale-105 transition-transform">
+                                        <div class="p-1 text-center font-medium bg-white/20 dark:bg-gray-800/40">${wp.name}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div class="flex space-x-2">
+                                <input type="text" id="customWpUrl" placeholder="Paste custom image URL..." value="${SystemOS.customWallpaperUrl}" class="flex-1 px-3 py-1.5 rounded-lg bg-white/40 dark:bg-gray-800/50 border border-white/20 text-xs focus:outline-none">
+                                <button onclick="SystemOS.setCustomWallpaper(document.getElementById('customWpUrl').value)" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-medium">Apply</button>
+                            </div>
+                        ` : `
+                            <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-between">
+                                <span>Unlock Admin Mode to customize wallpapers.</span>
+                                <button onclick="SystemOS.promptPin()" class="px-3 py-1 bg-amber-500 text-white rounded-lg font-medium">Enter PIN</button>
+                            </div>
+                        `}
+                    </div>
+
+                    <div class="border-t border-white/10 pt-4">
+                        <h3 class="text-sm font-semibold mb-3 text-indigo-500">Admin Security Settings</h3>
+                        <div class="flex items-center justify-between p-3 rounded-xl bg-white/20 dark:bg-gray-800/30">
+                            <div>
+                                <div class="font-medium">Admin Status</div>
+                                <div class="text-[10px] opacity-70">${SystemOS.isAdmin ? 'Unlocked' : 'Locked'}</div>
+                            </div>
+                            ${SystemOS.isAdmin ? `
+                                <button onclick="SystemOS.changePin()" class="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium">Change PIN</button>
+                            ` : `
+                                <button onclick="SystemOS.promptPin()" class="px-3 py-1 bg-indigo-600 text-white rounded-lg font-medium">Unlock Admin</button>
+                            `}
+                        </div>
+                    </div>
+
+                    <div class="border-t border-white/10 pt-4">
+                        <h3 class="text-sm font-semibold mb-3 text-indigo-500">System Preferences</h3>
+                        <div class="flex items-center justify-between p-3 rounded-xl bg-white/20 dark:bg-gray-800/30">
+                            <div>
+                                <div class="font-medium">Dark Mode Glass UI</div>
+                                <div class="text-[10px] opacity-70">Toggle light/dark appearance</div>
+                            </div>
+                            <button onclick="SystemOS.toggleDarkMode()" class="px-3 py-1 bg-indigo-600 text-white rounded-lg font-medium">Toggle</button>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-white/10 pt-4">
+                        <h3 class="text-sm font-semibold mb-3 text-red-400">System Reset</h3>
+                        <button onclick="localStorage.clear(); SystemOS.restart();" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">Reset Local Storage</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Window Load Initialization
+        window.onload = () => {
+            SystemOS.init();
+        };
+    </script>
+</body>
+</html>
